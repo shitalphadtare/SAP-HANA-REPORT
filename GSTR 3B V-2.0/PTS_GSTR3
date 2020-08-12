@@ -1,0 +1,1010 @@
+CREATE VIEW PTS_GSTR3  AS ((((((SELECT
+	 inv."DocEntry",
+	 inv."ObjType",
+	 "PIndicator",
+	 MONTHNAME(inv."DocDate") AS "Month",
+	 year(inv."DocDate") AS "Year",
+	 inv."DocDate",
+	 iv1."VisOrder",
+	 ITM."GstTaxCtg" AS "Item_Tax_Type",
+	 (CASE WHEN ITM."ItemClass" = 1 
+							THEN (SELECT
+	 "ServCode" 
+								FROM OSAC 
+								WHERE "AbsEntry" = (CASE WHEN IV1."SacEntry" IS NULL 
+									THEN ITM."SACEntry" 
+									ELSE IV1."SacEntry" 
+									END)) WHEN ITM."ItemClass" = 2 
+							THEN (SELECT
+	 "ChapterID" 
+								FROM OCHP 
+								WHERE "AbsEntry" = (CASE WHEN IV1."HsnEntry" IS NULL 
+									THEN ITM."ChapterID" 
+									ELSE IV1."HsnEntry" 
+									END)) 
+							ELSE '' 
+							END) AS "HSN Code",
+	 CASE WHEN IV1."AssblValue" = 0 
+						THEN (CASE WHEN INV."DiscPrcnt" = 0 
+							THEN IFNULL(IV1."LineTotal",
+	 0) 
+							ELSE (IFNULL(IV1."LineTotal",
+	 0) - (IFNULL(IV1."LineTotal",
+	 0) * IFNULL(INV."DiscPrcnt",
+	 0) / 100)) 
+							END) 
+						ELSE (IV1."AssblValue" * IV1."Quantity") 
+						END AS "BaseSum",
+	 iv1."VatPrcnt" AS "VatPercent",
+	 (IFNULL(cgst."TaxSum",
+	 0)) AS "CGST_Sum",
+	 (IFNULL(sgst."TaxSum",
+	 0)) AS "SGST_Sum",
+	 (IFNULL(igst."TaxSum",
+	 0)) AS "IGST_Sum",
+	 (IFNULL(cess."TaxSum",
+	 0)) AS "Cess_Sum",
+	 IFNULL(iv3."linetotal",
+	 0) AS "freight",
+	 IFNULL(fcgst."TaxSum",
+	 0) AS "F_CGST",
+	 IFNULL(fsgst."TaxSum",
+	 0) AS "F_SGST",
+	 IFNULL(figst."TaxSum",
+	 0) AS "F_IGST",
+	 IFNULL(fcess."TaxSum",
+	 0) AS "F_CESS",
+	 IFNULL(t1."ImpORExp",
+	 'N') AS "ImpOrExp",
+	 IFNULL(t1."LocGSTType",
+	 0) AS "LocGSTType",
+	 IFNULL(t1."LocGSTN",
+	 '') AS "LocGSTN",
+	 IFNULL(t1."LocStatCod",
+	 '') AS "LocStateCode",
+	 IFNULL(t1."LocStaGSTN",
+	 '') AS "LocStateGSTN",
+	 IFNULL(t1."BpGSTN",
+	 '') AS "BpGSTN",
+	 IFNULL(t1."BpGSTType",
+	 0) AS "BpGSTType",
+	 IFNULL(t1."BpStateCod",
+	 cd1."State") AS "BpStateCode",
+	 IFNULL(t1."BPStatGSTN",
+	 '') AS "BpStateGSTN",
+	 CASE WHEN IFNULL(CGST."RvsChrgTax",
+	 0) + IFNULL(SGST."RvsChrgTax",
+	 0) + IFNULL(IGST."RvsChrgTax",
+	 0) <> 0 
+						THEN 'Y' 
+						ELSE 'N' 
+						END AS "Reverse_Charge",
+	 (SELECT
+	 DISTINCT CASE WHEN MAX("staType") IN (-100,
+	-110,
+	-120) 
+							THEN 'Y' 
+							ELSE 'N' 
+							END 
+							FROM INV4 
+							WHERE "DocEntry" = inv."DocEntry" 
+							AND IV1."LineNum" = "LineNum" 
+							AND "RelateType" = 1 
+							AND "ExpnsCode" = -1) AS "isgsttax",
+	 (SELECT
+	 DISTINCT CASE WHEN CGST."staType" IN (-100) 
+							THEN 'CGST' WHEN igst."staType" IN (-120) 
+							THEN 'IGST' WHEN cess."staType" IN (-130) 
+							THEN 'CESS' 
+							END 
+							FROM INV4 
+							WHERE "DocEntry" = inv."DocEntry" 
+							AND IV1."LineNum" = "LineNum" 
+							AND "RelateType" = 1 
+							AND "ExpnsCode" = -1) AS "TAX_CODE",
+	 inv."GSTTranTyp",
+	 inv."DocType" 
+						FROM OINV inv 
+						INNER JOIN INV1 iv1 ON inv."DocEntry" = iv1."DocEntry" 
+						LEFT OUTER JOIN OITM itm ON iv1."ItemCode" = itm."ItemCode" 
+						LEFT OUTER JOIN INV4 cgst ON IV1."DocEntry" = CGST."DocEntry" 
+						AND IV1."LineNum" = CGST."LineNum" 
+						AND CGST."staType" IN (-100) 
+						AND CGST."RelateType" = 1 
+						AND CGST."ExpnsCode" = -1 
+						LEFT OUTER JOIN INV4 Sgst ON IV1."DocEntry" = SGST."DocEntry" 
+						AND IV1."LineNum" = SGST."LineNum" 
+						AND SGST."staType" IN (-110) 
+						AND SGST."RelateType" = 1 
+						AND SGST."ExpnsCode" = -1 
+						LEFT OUTER JOIN INV4 igst ON inv."DocEntry" = igst."DocEntry" 
+						AND igst."staType" = -120 
+						AND iv1."LineNum" = igst."LineNum" 
+						AND igst."RelateType" = 1 
+						AND IGST."ExpnsCode" = -1 
+						LEFT OUTER JOIN INV4 cess ON inv."DocEntry" = cess."DocEntry" 
+						AND cess."staType" = -130 
+						AND iv1."LineNum" = cess."LineNum" 
+						AND cess."RelateType" = 1 
+						AND cess."ExpnsCode" = -1 
+						INNER JOIN INV12 t1 ON inv."DocEntry" = t1."DocEntry" 
+						LEFT OUTER JOIN (SELECT
+	 SUM("LineTotal") AS "linetotal",
+	 "DocEntry" 
+							FROM INV3 
+							GROUP BY "DocEntry") AS iv3 ON inv."DocEntry" = iv3."DocEntry" 
+						LEFT OUTER JOIN (SELECT
+	 SUM("TaxSum") AS "TaxSum",
+	 "DocEntry" 
+							FROM INV4 
+							WHERE "staType" = -100 
+							AND "RelateType" = 3 
+							GROUP BY "DocEntry") AS Fcgst ON iv3."DocEntry" = Fcgst."DocEntry" 
+						LEFT OUTER JOIN (SELECT
+	 SUM("TaxSum") AS "TaxSum",
+	 "DocEntry" 
+							FROM INV4 
+							WHERE "staType" = -110 
+							AND "RelateType" = 3 
+							GROUP BY "DocEntry") AS FSgst ON iv3."DocEntry" = Fsgst."DocEntry" 
+						LEFT OUTER JOIN (SELECT
+	 SUM("TaxSum") AS "TaxSum",
+	 "DocEntry" 
+							FROM INV4 
+							WHERE "staType" = -120 
+							AND "RelateType" = 3 
+							GROUP BY "DocEntry") AS Figst ON iv3."DocEntry" = Figst."DocEntry" 
+						LEFT OUTER JOIN (SELECT
+	 SUM("TaxSum") AS "TaxSum",
+	 "DocEntry" 
+							FROM INV4 
+							WHERE "staType" = -130 
+							AND "RelateType" = 3 
+							GROUP BY "DocEntry") AS FCess ON iv3."DocEntry" = FCess."DocEntry" 
+						LEFT OUTER JOIN CRD1 CD1 ON CD1."CardCode" = INV."CardCode" 
+						AND CD1."AdresType" = 'B' 
+						AND INV."PayToCode" = CD1."Address" 
+						WHERE inv.CANCELED <> 'Y' 
+						AND inv.CANCELED <> 'C') 
+					UNION ALL (SELECT
+	 RIN."DocEntry",
+	 RIN."ObjType",
+	 "PIndicator",
+	 MONTHNAME(RIN."DocDate") AS "Month",
+	 year(RIN."DocDate") AS "Year",
+	 RIN."DocDate",
+	 iv1."VisOrder",
+	 ITM."GstTaxCtg" AS "Item_Tax_Type",
+	 (CASE WHEN ITM."ItemClass" = 1 
+							THEN (SELECT
+	 "ServCode" 
+								FROM OSAC 
+								WHERE "AbsEntry" = (CASE WHEN IV1."SacEntry" IS NULL 
+									THEN ITM."SACEntry" 
+									ELSE IV1."SacEntry" 
+									END)) WHEN ITM."ItemClass" = 2 
+							THEN (SELECT
+	 "ChapterID" 
+								FROM OCHP 
+								WHERE "AbsEntry" = (CASE WHEN IV1."HsnEntry" IS NULL 
+									THEN ITM."ChapterID" 
+									ELSE IV1."HsnEntry" 
+									END)) 
+							ELSE '' 
+							END) AS "HSN Code",
+	 CASE WHEN IV1."AssblValue" = 0 
+						THEN (CASE WHEN RIN."DiscPrcnt" = 0 
+							THEN IFNULL(IV1."LineTotal",
+	 0) 
+							ELSE (IFNULL(IV1."LineTotal",
+	 0) - (IFNULL(IV1."LineTotal",
+	 0) * IFNULL(RIN."DiscPrcnt",
+	 0) / 100)) 
+							END) 
+						ELSE (IV1."AssblValue" * IV1."Quantity") 
+						END AS "BaseSum",
+	 iv1."VatPrcnt" AS "VatPercent",
+	 (IFNULL(cgst."TaxSum",
+	 0)) AS "CGST_Sum",
+	 (IFNULL(sgst."TaxSum",
+	 0)) AS "SGST_Sum",
+	 (IFNULL(igst."TaxSum",
+	 0)) AS "IGST_Sum",
+	 (IFNULL(cess."TaxSum",
+	 0)) AS "Cess_Sum",
+	 IFNULL(iv3."linetotal",
+	 0) AS "freight",
+	 IFNULL(fcgst."TaxSum",
+	 0) AS "F_CGST",
+	 IFNULL(fsgst."TaxSum",
+	 0) AS "F_SGST",
+	 IFNULL(figst."TaxSum",
+	 0) AS "F_IGST",
+	 IFNULL(fcess."TaxSum",
+	 0) AS "F_CESS",
+	 IFNULL(t1."ImpORExp",
+	 'N') AS "ImpOrExp",
+	 IFNULL(t1."LocGSTType",
+	 0) AS "LocGSTType",
+	 IFNULL(t1."LocGSTN",
+	 '') AS "LocGSTN",
+	 IFNULL(t1."LocStatCod",
+	 '') AS "LocStateCode",
+	 IFNULL(t1."LocStaGSTN",
+	 '') AS "LocStateGSTN",
+	 IFNULL(t1."BpGSTN",
+	 '') AS "BpGSTN",
+	 IFNULL(t1."BpGSTType",
+	 0) AS "BpGSTType",
+	 IFNULL(t1."BpStateCod",
+	 cd1."State") AS "BpStateCode",
+	 IFNULL(t1."BPStatGSTN",
+	 '') AS "BpStateGSTN",
+	 CASE WHEN IFNULL(CGST."RvsChrgTax",
+	 0) + IFNULL(SGST."RvsChrgTax",
+	 0) + IFNULL(IGST."RvsChrgTax",
+	 0) <> 0 
+						THEN 'Y' 
+						ELSE 'N' 
+						END AS "Reverse_Charge",
+	 (SELECT
+	 DISTINCT CASE WHEN MAX("staType") IN (-100,
+	-110,
+	-120) 
+							THEN 'Y' 
+							ELSE 'N' 
+							END 
+							FROM RIN4 
+							WHERE "DocEntry" = RIN."DocEntry" 
+							AND IV1."LineNum" = "LineNum" 
+							AND "RelateType" = 1 
+							AND "ExpnsCode" = -1) AS "isgsttax",
+	 (SELECT
+	 DISTINCT CASE WHEN CGST."staType" IN (-100) 
+							THEN 'CGST' WHEN igst."staType" IN (-120) 
+							THEN 'IGST' WHEN cess."staType" IN (-130) 
+							THEN 'CESS' 
+							END 
+							FROM RIN4 
+							WHERE "DocEntry" = RIN."DocEntry" 
+							AND IV1."LineNum" = "LineNum" 
+							AND "RelateType" = 1 
+							AND "ExpnsCode" = -1) AS "TAX_CODE",
+	 RIN."GSTTranTyp",
+	 RIN."DocType" 
+						FROM ORIN RIN 
+						INNER JOIN RIN1 iv1 ON RIN."DocEntry" = iv1."DocEntry" 
+						LEFT OUTER JOIN OITM itm ON iv1."ItemCode" = itm."ItemCode" 
+						LEFT OUTER JOIN RIN4 cgst ON IV1."DocEntry" = CGST."DocEntry" 
+						AND IV1."LineNum" = CGST."LineNum" 
+						AND CGST."staType" IN (-100) 
+						AND CGST."RelateType" = 1 
+						AND CGST."ExpnsCode" = -1 
+						LEFT OUTER JOIN RIN4 Sgst ON IV1."DocEntry" = SGST."DocEntry" 
+						AND IV1."LineNum" = SGST."LineNum" 
+						AND SGST."staType" IN (-110) 
+						AND SGST."RelateType" = 1 
+						AND SGST."ExpnsCode" = -1 
+						LEFT OUTER JOIN RIN4 igst ON RIN."DocEntry" = igst."DocEntry" 
+						AND igst."staType" = -120 
+						AND iv1."LineNum" = igst."LineNum" 
+						AND igst."RelateType" = 1 
+						AND IGST."ExpnsCode" = -1 
+						LEFT OUTER JOIN RIN4 cess ON RIN."DocEntry" = cess."DocEntry" 
+						AND cess."staType" = -130 
+						AND iv1."LineNum" = cess."LineNum" 
+						AND cess."RelateType" = 1 
+						AND cess."ExpnsCode" = -1 
+						INNER JOIN RIN12 t1 ON RIN."DocEntry" = t1."DocEntry" 
+						LEFT OUTER JOIN (SELECT
+	 SUM("LineTotal") AS "linetotal",
+	 "DocEntry" 
+							FROM RIN3 
+							GROUP BY "DocEntry") AS iv3 ON RIN."DocEntry" = iv3."DocEntry" 
+						LEFT OUTER JOIN (SELECT
+	 SUM("TaxSum") AS "TaxSum",
+	 "DocEntry" 
+							FROM RIN4 
+							WHERE "staType" = -100 
+							AND "RelateType" = 3 
+							GROUP BY "DocEntry") AS Fcgst ON iv3."DocEntry" = Fcgst."DocEntry" 
+						LEFT OUTER JOIN (SELECT
+	 SUM("TaxSum") AS "TaxSum",
+	 "DocEntry" 
+							FROM RIN4 
+							WHERE "staType" = -110 
+							AND "RelateType" = 3 
+							GROUP BY "DocEntry") AS FSgst ON iv3."DocEntry" = Fsgst."DocEntry" 
+						LEFT OUTER JOIN (SELECT
+	 SUM("TaxSum") AS "TaxSum",
+	 "DocEntry" 
+							FROM RIN4 
+							WHERE "staType" = -120 
+							AND "RelateType" = 3 
+							GROUP BY "DocEntry") AS Figst ON iv3."DocEntry" = Figst."DocEntry" 
+						LEFT OUTER JOIN (SELECT
+	 SUM("TaxSum") AS "TaxSum",
+	 "DocEntry" 
+							FROM RIN4 
+							WHERE "staType" = -130 
+							AND "RelateType" = 3 
+							GROUP BY "DocEntry") AS FCess ON iv3."DocEntry" = FCess."DocEntry" 
+						LEFT OUTER JOIN CRD1 CD1 ON CD1."CardCode" = RIN."CardCode" 
+						AND CD1."AdresType" = 'B' 
+						AND RIN."PayToCode" = CD1."Address" 
+						WHERE RIN.CANCELED <> 'Y' 
+						AND RIN.CANCELED <> 'C')) 
+				UNION ALL (SELECT
+	 DPI."DocEntry",
+	 DPI."ObjType",
+	 "PIndicator",
+	 MONTHNAME(DPI."DocDate") AS "Month",
+	 year(DPI."DocDate") AS "Year",
+	 DPI."DocDate",
+	 iv1."VisOrder",
+	 ITM."GstTaxCtg" AS "Item_Tax_Type",
+	 (CASE WHEN ITM."ItemClass" = 1 
+						THEN (SELECT
+	 "ServCode" 
+							FROM OSAC 
+							WHERE "AbsEntry" = (CASE WHEN IV1."SacEntry" IS NULL 
+								THEN ITM."SACEntry" 
+								ELSE IV1."SacEntry" 
+								END)) WHEN ITM."ItemClass" = 2 
+						THEN (SELECT
+	 "ChapterID" 
+							FROM OCHP 
+							WHERE "AbsEntry" = (CASE WHEN IV1."HsnEntry" IS NULL 
+								THEN ITM."ChapterID" 
+								ELSE IV1."HsnEntry" 
+								END)) 
+						ELSE '' 
+						END) AS "HSN Code",
+	 CASE WHEN IV1."AssblValue" = 0 
+					THEN (CASE WHEN DPI."DiscPrcnt" = 0 
+						THEN IFNULL(IV1."LineTotal",
+	 0) 
+						ELSE (IFNULL(IV1."LineTotal",
+	 0) - (IFNULL(IV1."LineTotal",
+	 0) * IFNULL(DPI."DiscPrcnt",
+	 0) / 100)) 
+						END) 
+					ELSE (IV1."AssblValue" * IV1."Quantity") 
+					END AS "BaseSum",
+	 iv1."VatPrcnt" AS "VatPercent",
+	 (IFNULL(cgst."TaxSum",
+	 0)) AS "CGST_Sum",
+	 (IFNULL(sgst."TaxSum",
+	 0)) AS "SGST_Sum",
+	 (IFNULL(igst."TaxSum",
+	 0)) AS "IGST_Sum",
+	 (IFNULL(cess."TaxSum",
+	 0)) AS "Cess_Sum",
+	 IFNULL(iv3."linetotal",
+	 0) AS "freight",
+	 IFNULL(fcgst."TaxSum",
+	 0) AS "F_CGST",
+	 IFNULL(fsgst."TaxSum",
+	 0) AS "F_SGST",
+	 IFNULL(figst."TaxSum",
+	 0) AS "F_IGST",
+	 IFNULL(fcess."TaxSum",
+	 0) AS "F_CESS",
+	 IFNULL(t1."ImpORExp",
+	 'N') AS "ImpOrExp",
+	 IFNULL(t1."LocGSTType",
+	 0) AS "LocGSTType",
+	 IFNULL(t1."LocGSTN",
+	 '') AS "LocGSTN",
+	 IFNULL(t1."LocStatCod",
+	 '') AS "LocStateCode",
+	 IFNULL(t1."LocStaGSTN",
+	 '') AS "LocStateGSTN",
+	 IFNULL(t1."BpGSTN",
+	 '') AS "BpGSTN",
+	 IFNULL(t1."BpGSTType",
+	 0) AS "BpGSTType",
+	 IFNULL(t1."BpStateCod",
+	 cd1."State") AS "BpStateCode",
+	 IFNULL(t1."BPStatGSTN",
+	 '') AS "BpStateGSTN",
+	 CASE WHEN IFNULL(CGST."RvsChrgTax",
+	 0) + IFNULL(SGST."RvsChrgTax",
+	 0) + IFNULL(IGST."RvsChrgTax",
+	 0) <> 0 
+					THEN 'Y' 
+					ELSE 'N' 
+					END AS "Reverse_Charge",
+	 (SELECT
+	 DISTINCT CASE WHEN MAX("staType") IN (-100,
+	-110,
+	-120) 
+						THEN 'Y' 
+						ELSE 'N' 
+						END 
+						FROM DPI4 
+						WHERE "DocEntry" = dpi."DocEntry" 
+						AND IV1."LineNum" = "LineNum" 
+						AND "RelateType" = 1 
+						AND "ExpnsCode" = -1) AS "isgsttax",
+	 (SELECT
+	 DISTINCT CASE WHEN cgst."staType" IN (-100) 
+						THEN 'CGST' WHEN igst."staType" IN (-120) 
+						THEN 'IGST' WHEN cess."staType" IN (-130) 
+						THEN 'CESS' 
+						END 
+						FROM DPI4 
+						WHERE "DocEntry" = DPI."DocEntry" 
+						AND IV1."LineNum" = "LineNum" 
+						AND "RelateType" = 1 
+						AND "ExpnsCode" = -1) AS "TAX_CODE",
+	 DPI."GSTTranTyp",
+	 DPI."DocType" 
+					FROM ODPI DPI 
+					INNER JOIN DPI1 iv1 ON DPI."DocEntry" = iv1."DocEntry" 
+					LEFT OUTER JOIN OITM itm ON iv1."ItemCode" = itm."ItemCode" 
+					LEFT OUTER JOIN DPI4 cgst ON IV1."DocEntry" = CGST."DocEntry" 
+					AND IV1."LineNum" = CGST."LineNum" 
+					AND CGST."staType" IN (-100) 
+					AND CGST."RelateType" = 1 
+					AND CGST."ExpnsCode" = -1 
+					LEFT OUTER JOIN DPI4 Sgst ON IV1."DocEntry" = SGST."DocEntry" 
+					AND IV1."LineNum" = SGST."LineNum" 
+					AND SGST."staType" IN (-110) 
+					AND SGST."RelateType" = 1 
+					AND SGST."ExpnsCode" = -1 
+					LEFT OUTER JOIN DPI4 igst ON DPI."DocEntry" = igst."DocEntry" 
+					AND igst."staType" = -120 
+					AND iv1."LineNum" = igst."LineNum" 
+					AND igst."RelateType" = 1 
+					AND IGST."ExpnsCode" = -1 
+					LEFT OUTER JOIN DPI4 cess ON DPI."DocEntry" = cess."DocEntry" 
+					AND cess."staType" = -130 
+					AND iv1."LineNum" = cess."LineNum" 
+					AND cess."RelateType" = 1 
+					AND cess."ExpnsCode" = -1 
+					INNER JOIN DPI12 t1 ON DPI."DocEntry" = t1."DocEntry" 
+					LEFT OUTER JOIN (SELECT
+	 SUM("LineTotal") AS "linetotal",
+	 "DocEntry" 
+						FROM DPI3 
+						GROUP BY "DocEntry") AS iv3 ON DPI."DocEntry" = iv3."DocEntry" 
+					LEFT OUTER JOIN (SELECT
+	 SUM("TaxSum") AS "TaxSum",
+	 "DocEntry" 
+						FROM DPI4 
+						WHERE "staType" = -100 
+						AND "RelateType" = 3 
+						GROUP BY "DocEntry") AS Fcgst ON iv3."DocEntry" = Fcgst."DocEntry" 
+					LEFT OUTER JOIN (SELECT
+	 SUM("TaxSum") AS "TaxSum",
+	 "DocEntry" 
+						FROM DPI4 
+						WHERE "staType" = -110 
+						AND "RelateType" = 3 
+						GROUP BY "DocEntry") AS FSgst ON iv3."DocEntry" = Fsgst."DocEntry" 
+					LEFT OUTER JOIN (SELECT
+	 SUM("TaxSum") AS "TaxSum",
+	 "DocEntry" 
+						FROM DPI4 
+						WHERE "staType" = -120 
+						AND "RelateType" = 3 
+						GROUP BY "DocEntry") AS Figst ON iv3."DocEntry" = Figst."DocEntry" 
+					LEFT OUTER JOIN (SELECT
+	 SUM("TaxSum") AS "TaxSum",
+	 "DocEntry" 
+						FROM DPI4 
+						WHERE "staType" = -130 
+						AND "RelateType" = 3 
+						GROUP BY "DocEntry") AS FCess ON iv3."DocEntry" = FCess."DocEntry" 
+					LEFT OUTER JOIN CRD1 CD1 ON CD1."CardCode" = DPI."CardCode" 
+					AND CD1."AdresType" = 'B' 
+					AND DPI."PayToCode" = CD1."Address" 
+					WHERE DPI.CANCELED <> 'Y' 
+					AND DPI.CANCELED <> 'C' 
+					AND DPI."PaidToDate" <> 0)) 
+			UNION ALL (SELECT
+	 PCH."DocEntry",
+	 PCH."ObjType",
+	 "PIndicator",
+	 MONTHNAME(PCH."DocDate") AS "Month",
+	 year(PCH."DocDate") AS "Year",
+	 PCH."DocDate",
+	 iv1."VisOrder",
+	 ITM."GstTaxCtg" AS "Item_Tax_Type",
+	 (CASE WHEN ITM."ItemClass" = 1 
+					THEN (SELECT
+	 "ServCode" 
+						FROM OSAC 
+						WHERE "AbsEntry" = (CASE WHEN IV1."SacEntry" IS NULL 
+							THEN ITM."SACEntry" 
+							ELSE IV1."SacEntry" 
+							END)) WHEN ITM."ItemClass" = 2 
+					THEN (SELECT
+	 "ChapterID" 
+						FROM OCHP 
+						WHERE "AbsEntry" = (CASE WHEN IV1."HsnEntry" IS NULL 
+							THEN ITM."ChapterID" 
+							ELSE IV1."HsnEntry" 
+							END)) 
+					ELSE '' 
+					END) AS "HSN Code",
+	 CASE WHEN IV1."AssblValue" = 0 
+				THEN (CASE WHEN PCH."DiscPrcnt" = 0 
+					THEN IFNULL(IV1."LineTotal",
+	 0) 
+					ELSE (IFNULL(IV1."LineTotal",
+	 0) - (IFNULL(IV1."LineTotal",
+	 0) * IFNULL(PCH."DiscPrcnt",
+	 0) / 100)) 
+					END) 
+				ELSE (IV1."AssblValue" * IV1."Quantity") 
+				END AS "BaseSum",
+	 iv1."VatPrcnt" AS "VatPercent",
+	 (IFNULL(cgst."TaxSum",
+	 0)) AS "CGST_Sum",
+	 (IFNULL(sgst."TaxSum",
+	 0)) AS "SGST_Sum",
+	 (IFNULL(igst."TaxSum",
+	 0)) AS "IGST_Sum",
+	 (IFNULL(cess."TaxSum",
+	 0)) AS "Cess_Sum",
+	 IFNULL(iv3."linetotal",
+	 0) AS "freight",
+	 IFNULL(fcgst."TaxSum",
+	 0) AS "F_CGST",
+	 IFNULL(fsgst."TaxSum",
+	 0) AS "F_SGST",
+	 IFNULL(figst."TaxSum",
+	 0) AS "F_IGST",
+	 IFNULL(fcess."TaxSum",
+	 0) AS "F_CESS",
+	 IFNULL(t1."ImpORExp",
+	 'N') AS "ImpOrExp",
+	 IFNULL(t1."LocGSTType",
+	 0) AS "LocGSTType",
+	 IFNULL(t1."LocGSTN",
+	 '') AS "LocGSTN",
+	 IFNULL(t1."LocStatCod",
+	 '') AS "LocStateCode",
+	 IFNULL(t1."LocStaGSTN",
+	 '') AS "LocStateGSTN",
+	 IFNULL(t1."BpGSTN",
+	 '') AS "BpGSTN",
+	 IFNULL(t1."BpGSTType",
+	 0) AS "BpGSTType",
+	 IFNULL(t1."BpStateCod",
+	 cd1."State") AS "BpStateCode",
+	 IFNULL(t1."BPStatGSTN",
+	 '') AS "BpStateGSTN",
+	 CASE WHEN IFNULL(CGST."RvsChrgTax",
+	 0) + IFNULL(SGST."RvsChrgTax",
+	 0) + IFNULL(IGST."RvsChrgTax",
+	 0) <> 0 
+				THEN 'Y' 
+				ELSE 'N' 
+				END AS "Reverse_Charge",
+	 (SELECT
+	 DISTINCT CASE WHEN MAX("staType") IN (-100,
+	-110,
+	-120) 
+					THEN 'Y' 
+					ELSE 'N' 
+					END 
+					FROM PCH4 
+					WHERE "DocEntry" = pch."DocEntry" 
+					AND IV1."LineNum" = "LineNum" 
+					AND "RelateType" = 1 
+					AND "ExpnsCode" = -1) AS "isgsttax",
+	 (SELECT
+	 DISTINCT CASE WHEN CGST."staType" IN (-100) 
+					THEN 'CGST' WHEN igst."staType" IN (-120) 
+					THEN 'IGST' WHEN cess."staType" IN (-130) 
+					THEN 'CESS' 
+					END 
+					FROM PCH4 
+					WHERE "DocEntry" = PCH."DocEntry" 
+					AND IV1."LineNum" = "LineNum" 
+					AND "RelateType" = 1 
+					AND "ExpnsCode" = -1) AS "TAX_CODE",
+	 PCH."GSTTranTyp",
+	 PCH."DocType" 
+				FROM OPCH PCH 
+				INNER JOIN PCH1 iv1 ON PCH."DocEntry" = iv1."DocEntry" 
+				LEFT OUTER JOIN OITM itm ON iv1."ItemCode" = itm."ItemCode" 
+				LEFT OUTER JOIN PCH4 cgst ON IV1."DocEntry" = CGST."DocEntry" 
+				AND IV1."LineNum" = CGST."LineNum" 
+				AND CGST."staType" IN (-100) 
+				AND CGST."RelateType" = 1 
+				AND CGST."ExpnsCode" = -1 
+				LEFT OUTER JOIN PCH4 Sgst ON IV1."DocEntry" = SGST."DocEntry" 
+				AND IV1."LineNum" = SGST."LineNum" 
+				AND SGST."staType" IN (-110) 
+				AND SGST."RelateType" = 1 
+				AND SGST."ExpnsCode" = -1 
+				LEFT OUTER JOIN PCH4 igst ON PCH."DocEntry" = igst."DocEntry" 
+				AND igst."staType" = -120 
+				AND iv1."LineNum" = igst."LineNum" 
+				AND igst."RelateType" = 1 
+				AND IGST."ExpnsCode" = -1 
+				LEFT OUTER JOIN PCH4 cess ON PCH."DocEntry" = cess."DocEntry" 
+				AND cess."staType" = -130 
+				AND iv1."LineNum" = cess."LineNum" 
+				AND cess."RelateType" = 1 
+				AND cess."ExpnsCode" = -1 
+				INNER JOIN PCH12 t1 ON PCH."DocEntry" = t1."DocEntry" 
+				LEFT OUTER JOIN (SELECT
+	 SUM("LineTotal") AS "linetotal",
+	 "DocEntry" 
+					FROM PCH3 
+					GROUP BY "DocEntry") AS iv3 ON PCH."DocEntry" = iv3."DocEntry" 
+				LEFT OUTER JOIN (SELECT
+	 SUM("TaxSum") AS "TaxSum",
+	 "DocEntry" 
+					FROM PCH4 
+					WHERE "staType" = -100 
+					AND "RelateType" = 3 
+					GROUP BY "DocEntry") AS Fcgst ON iv3."DocEntry" = Fcgst."DocEntry" 
+				LEFT OUTER JOIN (SELECT
+	 SUM("TaxSum") AS "TaxSum",
+	 "DocEntry" 
+					FROM PCH4 
+					WHERE "staType" = -110 
+					AND "RelateType" = 3 
+					GROUP BY "DocEntry") AS FSgst ON iv3."DocEntry" = Fsgst."DocEntry" 
+				LEFT OUTER JOIN (SELECT
+	 SUM("TaxSum") AS "TaxSum",
+	 "DocEntry" 
+					FROM PCH4 
+					WHERE "staType" = -120 
+					AND "RelateType" = 3 
+					GROUP BY "DocEntry") AS Figst ON iv3."DocEntry" = Figst."DocEntry" 
+				LEFT OUTER JOIN (SELECT
+	 SUM("TaxSum") AS "TaxSum",
+	 "DocEntry" 
+					FROM PCH4 
+					WHERE "staType" = -130 
+					AND "RelateType" = 3 
+					GROUP BY "DocEntry") AS FCess ON iv3."DocEntry" = FCess."DocEntry" 
+				LEFT OUTER JOIN CRD1 CD1 ON CD1."CardCode" = PCH."CardCode" 
+				AND CD1."AdresType" = 'B' 
+				AND PCH."PayToCode" = CD1."Address" 
+				WHERE PCH.CANCELED <> 'Y' 
+				AND PCH.CANCELED <> 'C')) 
+		UNION ALL (SELECT
+	 RPC."DocEntry",
+	 RPC."ObjType",
+	 "PIndicator",
+	 MONTHNAME(RPC."DocDate") AS "Month",
+	 year(RPC."DocDate") AS "Year",
+	 RPC."DocDate",
+	 iv1."VisOrder",
+	 ITM."GstTaxCtg" AS "Item_Tax_Type",
+	 (CASE WHEN ITM."ItemClass" = 1 
+				THEN (SELECT
+	 "ServCode" 
+					FROM OSAC 
+					WHERE "AbsEntry" = (CASE WHEN IV1."SacEntry" IS NULL 
+						THEN ITM."SACEntry" 
+						ELSE IV1."SacEntry" 
+						END)) WHEN ITM."ItemClass" = 2 
+				THEN (SELECT
+	 "ChapterID" 
+					FROM OCHP 
+					WHERE "AbsEntry" = (CASE WHEN IV1."HsnEntry" IS NULL 
+						THEN ITM."ChapterID" 
+						ELSE IV1."HsnEntry" 
+						END)) 
+				ELSE '' 
+				END) AS "HSN Code",
+	 CASE WHEN IV1."AssblValue" = 0 
+			THEN (CASE WHEN RPC."DiscPrcnt" = 0 
+				THEN IFNULL(IV1."LineTotal",
+	 0) 
+				ELSE (IFNULL(IV1."LineTotal",
+	 0) - (IFNULL(IV1."LineTotal",
+	 0) * IFNULL(RPC."DiscPrcnt",
+	 0) / 100)) 
+				END) 
+			ELSE (IV1."AssblValue" * IV1."Quantity") 
+			END AS "BaseSum",
+	 iv1."VatPrcnt" AS "VatPercent",
+	 (IFNULL(cgst."TaxSum",
+	 0)) AS "CGST_Sum",
+	 (IFNULL(sgst."TaxSum",
+	 0)) AS "SGST_Sum",
+	 (IFNULL(igst."TaxSum",
+	 0)) AS "IGST_Sum",
+	 (IFNULL(cess."TaxSum",
+	 0)) AS "Cess_Sum",
+	 IFNULL(iv3."linetotal",
+	 0) AS "freight",
+	 IFNULL(fcgst."TaxSum",
+	 0) AS "F_CGST",
+	 IFNULL(fsgst."TaxSum",
+	 0) AS "F_SGST",
+	 IFNULL(figst."TaxSum",
+	 0) AS "F_IGST",
+	 IFNULL(fcess."TaxSum",
+	 0) AS "F_CESS",
+	 IFNULL(t1."ImpORExp",
+	 'N') AS "ImpOrExp",
+	 IFNULL(t1."LocGSTType",
+	 0) AS "LocGSTType",
+	 IFNULL(t1."LocGSTN",
+	 '') AS "LocGSTN",
+	 IFNULL(t1."LocStatCod",
+	 '') AS "LocStateCode",
+	 IFNULL(t1."LocStaGSTN",
+	 '') AS "LocStateGSTN",
+	 IFNULL(t1."BpGSTN",
+	 '') AS "BpGSTN",
+	 IFNULL(t1."BpGSTType",
+	 0) AS "BpGSTType",
+	 IFNULL(t1."BpStateCod",
+	 cd1."State") AS "BpStateCode",
+	 IFNULL(t1."BPStatGSTN",
+	 '') AS "BpStateGSTN",
+	 CASE WHEN IFNULL(CGST."RvsChrgTax",
+	 0) + IFNULL(SGST."RvsChrgTax",
+	 0) + IFNULL(IGST."RvsChrgTax",
+	 0) <> 0 
+			THEN 'Y' 
+			ELSE 'N' 
+			END AS "Reverse_Charge",
+	 (SELECT
+	 DISTINCT CASE WHEN MAX("staType") IN (-100,
+	-110,
+	-120) 
+				THEN 'Y' 
+				ELSE 'N' 
+				END 
+				FROM RPC4 
+				WHERE "DocEntry" = rpc."DocEntry" 
+				AND IV1."LineNum" = "LineNum" 
+				AND "RelateType" = 1 
+				AND "ExpnsCode" = -1) AS "isgsttax",
+	 (SELECT
+	 DISTINCT CASE WHEN CGST."staType" IN (-100) 
+				THEN 'CGST' WHEN igst."staType" IN (-120) 
+				THEN 'IGST' WHEN cess."staType" IN (-130) 
+				THEN 'CESS' 
+				END 
+				FROM RPC4 
+				WHERE "DocEntry" = RPC."DocEntry" 
+				AND IV1."LineNum" = "LineNum" 
+				AND "RelateType" = 1 
+				AND "ExpnsCode" = -1) AS "TAX_CODE",
+	 RPC."GSTTranTyp",
+	 RPC."DocType" 
+			FROM ORPC RPC 
+			INNER JOIN RPC1 iv1 ON RPC."DocEntry" = iv1."DocEntry" 
+			LEFT OUTER JOIN OITM itm ON iv1."ItemCode" = itm."ItemCode" 
+			LEFT OUTER JOIN RPC4 cgst ON IV1."DocEntry" = CGST."DocEntry" 
+			AND IV1."LineNum" = CGST."LineNum" 
+			AND CGST."staType" IN (-100) 
+			AND CGST."RelateType" = 1 
+			AND CGST."ExpnsCode" = -1 
+			LEFT OUTER JOIN RPC4 Sgst ON IV1."DocEntry" = SGST."DocEntry" 
+			AND IV1."LineNum" = SGST."LineNum" 
+			AND SGST."staType" IN (-110) 
+			AND SGST."RelateType" = 1 
+			AND SGST."ExpnsCode" = -1 
+			LEFT OUTER JOIN RPC4 igst ON RPC."DocEntry" = igst."DocEntry" 
+			AND igst."staType" = -120 
+			AND iv1."LineNum" = igst."LineNum" 
+			AND igst."RelateType" = 1 
+			AND IGST."ExpnsCode" = -1 
+			LEFT OUTER JOIN RPC4 cess ON RPC."DocEntry" = cess."DocEntry" 
+			AND cess."staType" = -130 
+			AND iv1."LineNum" = cess."LineNum" 
+			AND cess."RelateType" = 1 
+			AND cess."ExpnsCode" = -1 
+			INNER JOIN RPC12 t1 ON RPC."DocEntry" = t1."DocEntry" 
+			LEFT OUTER JOIN (SELECT
+	 SUM("LineTotal") AS "linetotal",
+	 "DocEntry" 
+				FROM RPC3 
+				GROUP BY "DocEntry") AS iv3 ON RPC."DocEntry" = iv3."DocEntry" 
+			LEFT OUTER JOIN (SELECT
+	 SUM("TaxSum") AS "TaxSum",
+	 "DocEntry" 
+				FROM RPC4 
+				WHERE "staType" = -100 
+				AND "RelateType" = 3 
+				GROUP BY "DocEntry") AS Fcgst ON iv3."DocEntry" = Fcgst."DocEntry" 
+			LEFT OUTER JOIN (SELECT
+	 SUM("TaxSum") AS "TaxSum",
+	 "DocEntry" 
+				FROM RPC4 
+				WHERE "staType" = -110 
+				AND "RelateType" = 3 
+				GROUP BY "DocEntry") AS FSgst ON iv3."DocEntry" = Fsgst."DocEntry" 
+			LEFT OUTER JOIN (SELECT
+	 SUM("TaxSum") AS "TaxSum",
+	 "DocEntry" 
+				FROM RPC4 
+				WHERE "staType" = -120 
+				AND "RelateType" = 3 
+				GROUP BY "DocEntry") AS Figst ON iv3."DocEntry" = Figst."DocEntry" 
+			LEFT OUTER JOIN (SELECT
+	 SUM("TaxSum") AS "TaxSum",
+	 "DocEntry" 
+				FROM RPC4 
+				WHERE "staType" = -130 
+				AND "RelateType" = 3 
+				GROUP BY "DocEntry") AS FCess ON iv3."DocEntry" = FCess."DocEntry" 
+			LEFT OUTER JOIN CRD1 CD1 ON CD1."CardCode" = RPC."CardCode" 
+			AND CD1."AdresType" = 'B' 
+			AND RPC."PayToCode" = CD1."Address" 
+			WHERE RPC.CANCELED <> 'Y' 
+			AND RPC.CANCELED <> 'C')) 
+	UNION ALL (SELECT
+	 DPO."DocEntry",
+	 DPO."ObjType",
+	 "PIndicator",
+	 MONTHNAME(DPO."DocDate") AS "Month",
+	 year(DPO."DocDate") AS "Year",
+	 DPO."DocDate",
+	 iv1."VisOrder",
+	 ITM."GstTaxCtg" AS "Item_Tax_Type",
+	 (CASE WHEN ITM."ItemClass" = 1 
+			THEN (SELECT
+	 "ServCode" 
+				FROM OSAC 
+				WHERE "AbsEntry" = (CASE WHEN IV1."SacEntry" IS NULL 
+					THEN ITM."SACEntry" 
+					ELSE IV1."SacEntry" 
+					END)) WHEN ITM."ItemClass" = 2 
+			THEN (SELECT
+	 "ChapterID" 
+				FROM OCHP 
+				WHERE "AbsEntry" = (CASE WHEN IV1."HsnEntry" IS NULL 
+					THEN ITM."ChapterID" 
+					ELSE IV1."HsnEntry" 
+					END)) 
+			ELSE '' 
+			END) AS "HSN Code",
+	 CASE WHEN IV1."AssblValue" = 0 
+		THEN (CASE WHEN DPO."DiscPrcnt" = 0 
+			THEN IFNULL(IV1."LineTotal",
+	 0) 
+			ELSE (IFNULL(IV1."LineTotal",
+	 0) - (IFNULL(IV1."LineTotal",
+	 0) * IFNULL(DPO."DiscPrcnt",
+	 0) / 100)) 
+			END) 
+		ELSE (IV1."AssblValue" * IV1."Quantity") 
+		END AS "BaseSum",
+	 iv1."VatPrcnt" AS "VatPercent",
+	 (IFNULL(cgst."TaxSum",
+	 0)) AS "CGST_Sum",
+	 (IFNULL(sgst."TaxSum",
+	 0)) AS "SGST_Sum",
+	 (IFNULL(igst."TaxSum",
+	 0)) AS "IGST_Sum",
+	 (IFNULL(cess."TaxSum",
+	 0)) AS "Cess_Sum",
+	 IFNULL(iv3."linetotal",
+	 0) AS "freight",
+	 IFNULL(fcgst."TaxSum",
+	 0) AS "F_CGST",
+	 IFNULL(fsgst."TaxSum",
+	 0) AS "F_SGST",
+	 IFNULL(figst."TaxSum",
+	 0) AS "F_IGST",
+	 IFNULL(fcess."TaxSum",
+	 0) AS "F_CESS",
+	 IFNULL(t1."ImpORExp",
+	 'N') AS "ImpOrExp",
+	 IFNULL(t1."LocGSTType",
+	 0) AS "LocGSTType",
+	 IFNULL(t1."LocGSTN",
+	 '') AS "LocGSTN",
+	 IFNULL(t1."LocStatCod",
+	 '') AS "LocStateCode",
+	 IFNULL(t1."LocStaGSTN",
+	 '') AS "LocStateGSTN",
+	 IFNULL(t1."BpGSTN",
+	 '') AS "BpGSTN",
+	 IFNULL(t1."BpGSTType",
+	 0) AS "BpGSTType",
+	 IFNULL(t1."BpStateCod",
+	 cd1."State") AS "BpStateCode",
+	 IFNULL(t1."BPStatGSTN",
+	 '') AS "BpStateGSTN",
+	 CASE WHEN IFNULL(CGST."RvsChrgTax",
+	 0) + IFNULL(SGST."RvsChrgTax",
+	 0) + IFNULL(IGST."RvsChrgTax",
+	 0) <> 0 
+		THEN 'Y' 
+		ELSE 'N' 
+		END AS "Reverse_Charge",
+	 (SELECT
+	 DISTINCT CASE WHEN MAX("staType") IN (-100,
+	-110,
+	-120) 
+			THEN 'Y' 
+			ELSE 'N' 
+			END 
+			FROM DPO4 
+			WHERE "DocEntry" = dpo."DocEntry" 
+			AND IV1."LineNum" = "LineNum" 
+			AND "RelateType" = 1 
+			AND "ExpnsCode" = -1) AS "isgsttax",
+	 (SELECT
+	 DISTINCT CASE WHEN CGST."staType" IN (-100) 
+			THEN 'CGST' WHEN igst."staType" IN (-120) 
+			THEN 'IGST' WHEN cess."staType" IN (-130) 
+			THEN 'CESS' 
+			END 
+			FROM DPO4 
+			WHERE "DocEntry" = DPO."DocEntry" 
+			AND IV1."LineNum" = "LineNum" 
+			AND "RelateType" = 1 
+			AND "ExpnsCode" = -1) AS "TAX_CODE",
+	 DPO."GSTTranTyp",
+	 DPO."DocType" 
+		FROM ODPO DPO 
+		INNER JOIN DPO1 iv1 ON DPO."DocEntry" = iv1."DocEntry" 
+		LEFT OUTER JOIN OITM itm ON iv1."ItemCode" = itm."ItemCode" 
+		LEFT OUTER JOIN DPO4 cgst ON IV1."DocEntry" = CGST."DocEntry" 
+		AND IV1."LineNum" = CGST."LineNum" 
+		AND CGST."staType" IN (-100) 
+		AND CGST."RelateType" = 1 
+		AND CGST."ExpnsCode" = -1 
+		LEFT OUTER JOIN DPO4 Sgst ON IV1."DocEntry" = SGST."DocEntry" 
+		AND IV1."LineNum" = SGST."LineNum" 
+		AND SGST."staType" IN (-110) 
+		AND SGST."RelateType" = 1 
+		AND SGST."ExpnsCode" = -1 
+		LEFT OUTER JOIN DPO4 igst ON DPO."DocEntry" = igst."DocEntry" 
+		AND igst."staType" = -120 
+		AND iv1."LineNum" = igst."LineNum" 
+		AND igst."RelateType" = 1 
+		AND IGST."ExpnsCode" = -1 
+		LEFT OUTER JOIN DPO4 cess ON DPO."DocEntry" = cess."DocEntry" 
+		AND cess."staType" = -130 
+		AND iv1."LineNum" = cess."LineNum" 
+		AND cess."RelateType" = 1 
+		AND cess."ExpnsCode" = -1 
+		INNER JOIN DPO12 t1 ON DPO."DocEntry" = t1."DocEntry" 
+		LEFT OUTER JOIN (SELECT
+	 SUM("LineTotal") AS "linetotal",
+	 "DocEntry" 
+			FROM DPO3 
+			GROUP BY "DocEntry") AS iv3 ON DPO."DocEntry" = iv3."DocEntry" 
+		LEFT OUTER JOIN (SELECT
+	 SUM("TaxSum") AS "TaxSum",
+	 "DocEntry" 
+			FROM DPO4 
+			WHERE "staType" = -100 
+			AND "RelateType" = 3 
+			GROUP BY "DocEntry") AS Fcgst ON iv3."DocEntry" = Fcgst."DocEntry" 
+		LEFT OUTER JOIN (SELECT
+	 SUM("TaxSum") AS "TaxSum",
+	 "DocEntry" 
+			FROM DPO4 
+			WHERE "staType" = -110 
+			AND "RelateType" = 3 
+			GROUP BY "DocEntry") AS FSgst ON iv3."DocEntry" = Fsgst."DocEntry" 
+		LEFT OUTER JOIN (SELECT
+	 SUM("TaxSum") AS "TaxSum",
+	 "DocEntry" 
+			FROM DPO4 
+			WHERE "staType" = -120 
+			AND "RelateType" = 3 
+			GROUP BY "DocEntry") AS Figst ON iv3."DocEntry" = Figst."DocEntry" 
+		LEFT OUTER JOIN (SELECT
+	 SUM("TaxSum") AS "TaxSum",
+	 "DocEntry" 
+			FROM DPO4 
+			WHERE "staType" = -130 
+			AND "RelateType" = 3 
+			GROUP BY "DocEntry") AS FCess ON iv3."DocEntry" = FCess."DocEntry" 
+		LEFT OUTER JOIN CRD1 CD1 ON CD1."CardCode" = DPO."CardCode" 
+		AND CD1."AdresType" = 'B' 
+		AND DPO."PayToCode" = CD1."Address" 
+		WHERE DPO.CANCELED <> 'Y' 
+		AND DPO.CANCELED <> 'C' 
+		AND DPO."PaidToDate" <> 0)) 
